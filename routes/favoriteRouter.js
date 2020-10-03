@@ -24,14 +24,22 @@ favoriteRouter
   .post(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
     // creating a new document in the campsite collection
     //TODO this might be req.user._id or req.user
-    console.log(req.body);
     Favorite.find({ user: req.user._id })
       .populate("user")
       .populate("campsite")
       .then((favorites) => {
-        //check if the campsiteids array from body are in the favorites- if not then add them
-        favorites
-          .forEach((favorite) => {
+        if (favorites.length < 1) {
+          Favorite.create({ user: req.user._id, campsites: req.body })
+            .then((favorite) => {
+              console.log("fav Created ", favorite);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.json(favorite);
+            })
+            .catch((err) => next(err));
+        } else {
+          //check if the campsiteids array from body are in the favorites- if not then add them
+          favorites.forEach((favorite) => {
             favorite.campsites.filter((campsite) => {
               // check what format the req.body comes in.  should be an array like the instructions say.
               req.body.forEach((bodyCampsite) => {
@@ -40,9 +48,10 @@ favoriteRouter
                 }
               });
             });
-          })
-          .catch((err) => next(err));
-      });
+          });
+        }
+      })
+      .catch((err) => next(err));
   })
   .put(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
     // put request that is not supported
@@ -68,22 +77,30 @@ favoriteRouter
     res.end("GET operation not supported on /favorites");
   })
   .post(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
-    console.log(req.body);
-    Favorite.find({ user: req.user._id })
+    Favorite.findOne({ user: req.user._id })
       .populate("user")
-      .populate("campsite")
-      .then((favorites) => {
+      //      .populate("campsite")
+      .then((favorite) => {
         //check if the campsiteids array from body are in the favorites- if not then add them
-        favorites
-          .forEach((favorite) => {
-            favorite.campsites.filter((campsite) => {
-              if (campsite.id != req.params.campsiteId) {
-                favorites.campsites.push(req.params.campsiteId);
-              }
-            });
-          })
-          .catch((err) => next(err));
-      });
+        if (favorite.campsites.includes(req.params.campsiteId)) {
+          err = new Error(
+            `Campsite ${req.params.campsiteId} already a favorite..`
+          );
+          err.status = 400;
+          return next(err);
+        } else {
+          favorite.campsites.push(req.params.campsiteId);
+          favorite
+            .save()
+            .then((favorite) => {
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.json(favorite);
+            })
+            .catch((err) => next(err));
+        }
+      })
+      .catch((err) => next(err));
   })
   .put(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
     // put request that is not supported
@@ -93,13 +110,23 @@ favoriteRouter
   .delete(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
     Favorite.findOne({ user: req.user._id })
       .populate("user")
-      .populate("campsite")
+      .populate("campsites")
       .then((favorite) => {
-        // can do this in one line prob
+        console.log(favorite); // can do this in one line prob
         const favs = favorite.campsites.filter((campsite) => {
-          return campsite.id != req.params.campsiteId;
+          if (campsite.id != req.params.campsiteId) {
+            return campsite;
+          }
         });
-        favorite.campsite = favs;
+        favorite.campsites = favs;
+        favorite
+          .save()
+          .then((favorite) => {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.json(favorite);
+          })
+          .catch((err) => next(err));
       })
       .catch((err) => next(err));
   });
